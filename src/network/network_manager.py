@@ -41,7 +41,23 @@ class NetworkManager:
             # Create server socket
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.host = socket.gethostbyname(socket.gethostname())
+            
+            # Try to get the correct host IP
+            try:
+                # Try to get IP that is not localhost
+                hostname = socket.gethostname()
+                self.host = socket.gethostbyname(hostname)
+                # If we get localhost, try to get actual local IP
+                if self.host.startswith("127."):
+                    # Get local IP by connecting to a remote address
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as temp_sock:
+                        temp_sock.connect(("8.8.8.8", 80))
+                        self.host = temp_sock.getsockname()[0]
+            except:
+                # Fallback to localhost
+                self.host = "127.0.0.1"
+            
+            print(f"Binding to {self.host}:{self.port}")
             self.server_socket.bind((self.host, self.port))
             self.server_socket.listen(5)
             self.is_host = True
