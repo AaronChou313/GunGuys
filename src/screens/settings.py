@@ -33,6 +33,10 @@ class SettingsScreen:
         self.game_name_rect = pygame.Rect(250, 420, 300, 40)
         self.game_name_active = False
         
+        # Status message
+        self.status_message = ""
+        self.status_time = 0
+        
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
@@ -56,12 +60,18 @@ class SettingsScreen:
                     # Enable/disable network sharing
                     if self.network_sharing:
                         if self.network_manager.start_hosting(self.game_name):
+                            self.status_message = "Network sharing enabled"
+                            self.status_time = pygame.time.get_ticks()
                             print("Network sharing enabled")
                         else:
                             self.network_sharing = False
+                            self.status_message = "Failed to enable network sharing"
+                            self.status_time = pygame.time.get_ticks()
                             print("Failed to enable network sharing")
                     else:
                         self.network_manager.stop_networking()
+                        self.status_message = "Network sharing disabled"
+                        self.status_time = pygame.time.get_ticks()
                         print("Network sharing disabled")
                 
                 # Game name input
@@ -91,7 +101,9 @@ class SettingsScreen:
         return None
     
     def update(self, dt=None):
-        pass
+        # Clear status message after 3 seconds
+        if self.status_message and pygame.time.get_ticks() - self.status_time > 3000:
+            self.status_message = ""
     
     def draw(self):
         self.screen.fill((50, 50, 50))  # Dark gray background
@@ -146,3 +158,10 @@ class SettingsScreen:
         
         name_text = self.font.render(self.game_name, True, (255, 255, 255))
         self.screen.blit(name_text, (self.game_name_rect.x + 10, self.game_name_rect.y + 10))
+        
+        # Draw status message
+        if self.status_message:
+            status_color = (0, 255, 0) if "enabled" in self.status_message else (255, 0, 0)
+            status_text = self.font.render(self.status_message, True, status_color)
+            status_rect = status_text.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() - 50))
+            self.screen.blit(status_text, status_rect)

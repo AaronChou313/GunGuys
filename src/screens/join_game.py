@@ -31,6 +31,10 @@ class JoinGameScreen:
         time.sleep(0.1)
         self.discover_games()
         
+        # Error message
+        self.error_message = ""
+        self.error_time = 0
+        
     def _continuous_discovery(self):
         """Continuously discover games"""
         # Start listening for other broadcasts
@@ -56,6 +60,7 @@ class JoinGameScreen:
                 if self.join_button.collidepoint(event.pos) and self.selected_game is not None:
                     # Connect to the selected game
                     game = self.discovered_games[self.selected_game]
+                    print(f"Attempting to connect to {game['name']} at {game['host']}:{game['port']}")
                     if self.network_manager.connect_to_game(game["host"], game["port"]):
                         # TODO: Navigate to game screen
                         from screens.game_screen import GameScreen
@@ -82,6 +87,10 @@ class JoinGameScreen:
     def update(self, dt=None):
         # Update discovered games periodically
         self.discover_games()
+        
+        # Clear error message after 3 seconds
+        if self.error_message and time.time() - self.error_time > 3:
+            self.error_message = ""
     
     def draw(self):
         self.screen.fill((50, 50, 50))  # Dark gray background
@@ -128,7 +137,7 @@ class JoinGameScreen:
             self.screen.blit(join_text, join_text_rect)
         
         # Draw error message if exists
-        if hasattr(self, 'error_message') and time.time() - self.error_time < 3:
+        if self.error_message and time.time() - self.error_time < 3:
             error_text = self.font.render(self.error_message, True, (255, 0, 0))
             error_rect = error_text.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() - 50))
             self.screen.blit(error_text, error_rect)

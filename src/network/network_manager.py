@@ -66,6 +66,7 @@ class NetworkManager:
             sync_thread.daemon = True
             sync_thread.start()
             
+            print(f"Hosting game '{game_name}' on {self.host}:{self.port}")
             return True
         except Exception as e:
             print(f"Error starting host: {e}")
@@ -73,6 +74,7 @@ class NetworkManager:
     
     def _accept_connections(self):
         """Accept incoming client connections"""
+        print("Waiting for connections...")
         while self.is_host:
             try:
                 client_sock, address = self.server_socket.accept()
@@ -218,10 +220,13 @@ class NetworkManager:
             try:
                 self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.client_socket.settimeout(5)  # 5 second timeout
+                print(f"Attempting to connect to {host}:{port}")
                 self.client_socket.connect((host, port))
                 self.client_socket.settimeout(None)  # Remove timeout after connection
                 self.is_connected = True
                 self.reconnect_attempts = 0  # Reset on successful connection
+                
+                print(f"Successfully connected to {host}:{port}")
                 
                 # Start listening for data in a separate thread
                 listen_thread = threading.Thread(target=self._listen_for_data)
