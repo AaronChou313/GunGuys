@@ -1,6 +1,8 @@
 import pygame
 from screens.save_selection import SaveSelection
 from screens.game_screen import GameScreen
+from screens.settings import SettingsScreen
+from screens.join_game import JoinGameScreen
 
 class MainMenu:
     def __init__(self, screen):
@@ -48,13 +50,13 @@ class MainMenu:
             save_selection = SaveSelection(self.screen)
             return save_selection
         elif action == "join":
-            # For now, directly start a game for testing
-            game_screen = GameScreen(self.screen)
-            return game_screen
+            # Open join game screen
+            join_game_screen = JoinGameScreen(self.screen)
+            return join_game_screen
         elif action == "settings":
-            # TODO: Implement settings functionality
-            print("Settings button clicked")
-            pass
+            # Open settings screen
+            settings_screen = SettingsScreen(self.screen)
+            return settings_screen
         elif action == "exit":
             return "quit"
         return None

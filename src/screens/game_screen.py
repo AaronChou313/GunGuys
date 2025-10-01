@@ -2,11 +2,15 @@ import pygame
 import random
 from entities.player import Player
 from entities.monster import Monster
+from network.network_manager import NetworkManager
 
 class GameScreen:
     def __init__(self, screen, save_file=None):
         self.screen = screen
         self.font = pygame.font.Font(None, 36)
+        
+        # Network manager
+        self.network_manager = NetworkManager()
         
         # Camera position (player is always centered)
         self.camera_x = 0
@@ -29,6 +33,10 @@ class GameScreen:
         # All entities list for collision detection
         self.entities = [self.player] + self.monsters
         
+        # Mouse position for targeting
+        self.mouse_x = 0
+        self.mouse_y = 0
+        
         # Load save if provided
         if save_file:
             self.load_game(save_file)
@@ -48,6 +56,21 @@ class GameScreen:
         ]
     
     def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            self.mouse_x, self.mouse_y = event.pos
+        
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left mouse button
+                if self.paused:
+                    for button in self.menu_buttons:
+                        if button["rect"].collidepoint(event.pos):
+                            return self.handle_menu_action(button["action"])
+                else:
+                    # Convert mouse position to world coordinates
+                    world_x = self.mouse_x + self.camera_x
+                    world_y = self.mouse_y + self.camera_y
+                    self.player.attack(world_x, world_y)
+        
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.paused = not self.paused
@@ -68,6 +91,9 @@ class GameScreen:
             # TODO: Implement settings
             pass
         elif action == "save_quit":
+            # Stop network sharing when quitting to main menu
+            self.network_manager.stop_networking()
+            
             # TODO: Save game
             from screens.main_menu import MainMenu
             return MainMenu(self.screen)
@@ -88,9 +114,43 @@ class GameScreen:
                     if self.entities[i].check_collision(self.entities[j]):
                         self.entities[i].resolve_collision(self.entities[j])
             
+            # Handle projectile collisions
+            self.handle_projectile_collisions()
+            
             # Update camera to follow player
             self.camera_x = self.player.x - self.screen.get_width() // 2
             self.camera_y = self.player.y - self.screen.get_height() // 2
+    
+    def handle_projectile_collisions(self):
+        """Handle collisions between projectiles and entities"""
+        # Player projectiles hitting monsters
+        for projectile in self.player.projectiles:
+            for monster in self.monsters:
+                if projectile.check_collision(monster):
+                    monster.current_health -= projectile.damage
+                    # Remove projectile on hit
+                    if projectile in self.player.projectiles:
+                        self.player.projectiles.remove(projectile)
+                    # Remove monster if dead
+                    if monster.current_health <= 0:
+                        self.monsters.remove(monster)
+                        self.entities.remove(monster)
+                        # Give player experience for killing monster
+                        self.player.gain_experience(20)
+                    break
+        
+        # Monster projectiles hitting player
+        for monster in self.monsters:
+            for projectile in monster.projectiles:
+                if projectile.check_collision(self.player):
+                    self.player.current_health -= projectile.damage
+                    # Remove projectile on hit
+                    if projectile in monster.projectiles:
+                        monster.projectiles.remove(projectile)
+                    # Remove player if dead (in a real game, this would trigger game over)
+                    if self.player.current_health <= 0:
+                        self.player.current_health = 0
+                    break
     
     def draw_grid(self):
         """Draw a grid on the background"""
@@ -186,6 +246,9 @@ class GameScreen:
                 for j in range(i+1, len(self.entities)):
                     if self.entities[i].check_collision(self.entities[j]):
                         self.entities[i].resolve_collision(self.entities[j])
+            
+            # Handle projectile collisions
+            self.handle_projectile_collisions()
             
             # Update camera to follow player
             self.camera_x = self.player.x - self.screen.get_width() // 2

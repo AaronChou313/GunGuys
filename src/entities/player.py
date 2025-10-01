@@ -1,6 +1,7 @@
 import math
 import pygame
 from entities.entity import Entity
+from weapons.projectile import Projectile
 
 class Player(Entity):
     def __init__(self, x=0, y=0):
@@ -25,6 +26,10 @@ class Player(Entity):
         self.attack_speed = self.base_attack_speed
         self.damage = self.base_damage
         self.attack_range = self.base_attack_range
+        
+        # Combat
+        self.last_attack_time = 0
+        self.projectiles = []
         
         # Weapon
         self.weapon = None
@@ -70,6 +75,41 @@ class Player(Entity):
         self.weapon = weapon
         self.update_stats()
     
+    def attack(self, target_x, target_y):
+        """Attack towards a target position"""
+        current_time = pygame.time.get_ticks() / 1000.0  # Convert to seconds
+        
+        # Check if we can attack based on attack speed
+        if current_time - self.last_attack_time >= 1.0 / self.attack_speed:
+            self.last_attack_time = current_time
+            
+            # Calculate direction to target
+            dx = target_x - self.x
+            dy = target_y - self.y
+            distance = max(0.1, math.sqrt(dx*dx + dy*dy))  # Avoid division by zero
+            
+            # Normalize direction
+            dx /= distance
+            dy /= distance
+            
+            # Create projectile
+            projectile_speed = 300  # pixels per second
+            projectile_vx = dx * projectile_speed
+            projectile_vy = dy * projectile_speed
+            
+            projectile = Projectile(
+                self.x + dx * self.radius * 2,  # Start outside player
+                self.y + dy * self.radius * 2,
+                projectile_vx,
+                projectile_vy,
+                self.damage,
+                "player"
+            )
+            
+            self.projectiles.append(projectile)
+            return True
+        return False
+    
     def update(self, dt):
         # Handle player movement with acceleration and friction
         keys = pygame.key.get_pressed()
@@ -86,6 +126,9 @@ class Player(Entity):
         
         # Update entity with physics
         super().update(dt)
+        
+        # Update projectiles
+        self.projectiles = [p for p in self.projectiles if p.update(dt)]
     
     def draw(self, screen, camera_x, camera_y):
         # Draw player (centered on screen)
@@ -95,3 +138,7 @@ class Player(Entity):
         
         # Draw direction indicator
         pygame.draw.circle(screen, (0, 100, 0), (int(player_screen_x), int(player_screen_y)), self.radius//2)
+        
+        # Draw projectiles
+        for projectile in self.projectiles:
+            projectile.draw(screen, camera_x, camera_y)

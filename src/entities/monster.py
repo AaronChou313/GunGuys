@@ -2,6 +2,7 @@ import pygame
 import random
 import math
 from entities.entity import Entity
+from weapons.projectile import Projectile
 
 class Monster(Entity):
     def __init__(self, x, y):
@@ -16,10 +17,14 @@ class Monster(Entity):
         self.max_speed = random.randint(50, 150)
         self.acceleration_rate = random.randint(30, 80)
         self.friction_coefficient = random.randint(20, 60)
+        self.damage = random.randint(5, 15)
+        self.attack_speed = random.uniform(0.5, 1.5)
         
         # AI properties
         self.move_timer = 0
         self.move_direction = (0, 0)
+        self.last_attack_time = 0
+        self.projectiles = []
         
         # Color for drawing
         self.color = (
@@ -55,8 +60,51 @@ class Monster(Entity):
             self.move_direction[1] * self.acceleration_rate
         )
         
+        # Attack player if close enough
+        distance_to_player = math.sqrt((player_x - self.x)**2 + (player_y - self.y)**2)
+        if distance_to_player < 200:  # Attack range
+            self.attack(player_x, player_y)
+        
         # Update entity with physics
         super().update(dt)
+        
+        # Update projectiles
+        self.projectiles = [p for p in self.projectiles if p.update(dt)]
+    
+    def attack(self, target_x, target_y):
+        """Attack towards a target position"""
+        current_time = pygame.time.get_ticks() / 1000.0  # Convert to seconds
+        
+        # Check if we can attack based on attack speed
+        if current_time - self.last_attack_time >= 1.0 / self.attack_speed:
+            self.last_attack_time = current_time
+            
+            # Calculate direction to target
+            dx = target_x - self.x
+            dy = target_y - self.y
+            distance = max(0.1, math.sqrt(dx*dx + dy*dy))  # Avoid division by zero
+            
+            # Normalize direction
+            dx /= distance
+            dy /= distance
+            
+            # Create projectile
+            projectile_speed = 200  # pixels per second
+            projectile_vx = dx * projectile_speed
+            projectile_vy = dy * projectile_speed
+            
+            projectile = Projectile(
+                self.x + dx * self.radius * 2,  # Start outside monster
+                self.y + dy * self.radius * 2,
+                projectile_vx,
+                projectile_vy,
+                self.damage,
+                "monster"
+            )
+            
+            self.projectiles.append(projectile)
+            return True
+        return False
     
     def draw(self, screen, camera_x, camera_y):
         # Draw monster
@@ -72,3 +120,7 @@ class Monster(Entity):
         pygame.draw.circle(screen, (255, 255, 255), 
                           (int(monster_screen_x + eye_offset), int(monster_screen_y - eye_offset)), 
                           self.radius // 4)
+        
+        # Draw projectiles
+        for projectile in self.projectiles:
+            projectile.draw(screen, camera_x, camera_y)
