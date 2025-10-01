@@ -23,7 +23,8 @@ class GameScreen:
         self.grid_color = (200, 200, 200)
         
         # Create player
-        self.player = Player(400, 300, "player")  # Start at center of screen
+        player_id = self.network_manager.player_id if self.network_manager.player_id else "player"
+        self.player = Player(400, 300, player_id)  # Start at center of screen
         
         # Create other players (for multiplayer)
         self.other_players = []
@@ -140,7 +141,7 @@ class GameScreen:
     def update_network_state(self):
         """Update network state with current game state"""
         # Update player positions
-        self.network_manager.game_state["players"]["player"] = {
+        self.network_manager.game_state["players"][self.player.player_id] = {
             "x": self.player.x,
             "y": self.player.y,
             "health": self.player.current_health,
@@ -150,56 +151,92 @@ class GameScreen:
             "weapon": self.player.weapon_name
         }
         
-        # Update monster positions
-        for i, monster in enumerate(self.monsters):
-            self.network_manager.game_state["monsters"][f"monster_{i}"] = {
-                "x": monster.x,
-                "y": monster.y,
-                "health": monster.current_health,
-                "max_health": monster.max_health
+        # Send player update to server if we're a client
+        if self.network_manager.is_connected and not self.network_manager.is_host:
+            player_data = {
+                "x": self.player.x,
+                "y": self.player.y,
+                "health": self.player.current_health,
+                "max_health": self.player.max_health,
+                "name": "Player",
+                "level": self.player.level,
+                "weapon": self.player.weapon_name
             }
+            self.network_manager.send_player_update(player_data)
         
-        # Update projectiles
-        all_projectiles = []
-        # Player projectiles
-        for proj in self.player.projectiles:
-            all_projectiles.append({
-                "x": proj.x,
-                "y": proj.y,
-                "vx": proj.vx,
-                "vy": proj.vy,
-                "owner": "player"
-            })
+        # Update monster positions (only host should do this)
+        if self.network_manager.is_host:
+            for i, monster in enumerate(self.monsters):
+                self.network_manager.game_state["monsters"][f"monster_{i}"] = {
+                    "x": monster.x,
+                    "y": monster.y,
+                    "health": monster.current_health,
+                    "max_health": monster.max_health
+                }
         
-        # Monster projectiles
-        for monster in self.monsters:
-            for proj in monster.projectiles:
+        # Update projectiles (only host should do this)
+        if self.network_manager.is_host:
+            all_projectiles = []
+            # Player projectiles
+            for proj in self.player.projectiles:
                 all_projectiles.append({
                     "x": proj.x,
                     "y": proj.y,
                     "vx": proj.vx,
                     "vy": proj.vy,
-                    "owner": "monster"
+                    "owner": "player"
                 })
-        
-        self.network_manager.game_state["projectiles"] = all_projectiles
+            
+            # Monster projectiles
+            for monster in self.monsters:
+                for proj in monster.projectiles:
+                    all_projectiles.append({
+                        "x": proj.x,
+                        "y": proj.y,
+                        "vx": proj.vx,
+                        "vy": proj.vy,
+                        "owner": "monster"
+                    })
+            
+            self.network_manager.game_state["projectiles"] = all_projectiles
     
     def update_from_network_state(self):
         """Update game state from network data"""
         # Update other players
         if "players" in self.network_manager.game_state:
-            # Clear existing other players
-            self.other_players = []
+            # Create a list to hold the updated players
+            updated_players = []
             
-            # Create/update other players
+            # Process each player from the network state
             for player_id, player_data in self.network_manager.game_state["players"].items():
-                if player_id != "player":  # Skip main player
-                    player = Player(player_data["x"], player_data["y"], player_id)
-                    player.current_health = player_data["health"]
-                    player.max_health = player_data["max_health"]
-                    player.level = player_data["level"]
-                    player.weapon_name = player_data["weapon"]
-                    self.other_players.append(player)
+                if player_id != self.player.player_id:  # Skip main player
+                    # Check if player already exists
+                    existing_player = None
+                    for p in self.other_players:
+                        if p.player_id == player_id:
+                            existing_player = p
+                            break
+                    
+                    if existing_player:
+                        # Update existing player
+                        existing_player.x = player_data["x"]
+                        existing_player.y = player_data["y"]
+                        existing_player.current_health = player_data["health"]
+                        existing_player.max_health = player_data["max_health"]
+                        existing_player.level = player_data["level"]
+                        existing_player.weapon_name = player_data["weapon"]
+                        updated_players.append(existing_player)
+                    else:
+                        # Create new player
+                        new_player = Player(player_data["x"], player_data["y"], player_id)
+                        new_player.current_health = player_data["health"]
+                        new_player.max_health = player_data["max_health"]
+                        new_player.level = player_data["level"]
+                        new_player.weapon_name = player_data["weapon"]
+                        updated_players.append(new_player)
+            
+            # Update the other_players list
+            self.other_players = updated_players
     
     def handle_projectile_collisions(self):
         """Handle collisions between projectiles and entities"""
@@ -286,6 +323,11 @@ class GameScreen:
             weapon_text = self.small_font.render(entity.weapon_name, True, (200, 200, 255))
             weapon_rect = weapon_text.get_rect(center=(screen_x, screen_y - 40))
             self.screen.blit(weapon_text, weapon_rect)
+            
+            # Coordinates
+            coord_text = self.small_font.render(f"({int(entity.x)}, {int(entity.y)})", True, (255, 255, 255))
+            coord_rect = coord_text.get_rect(center=(screen_x, screen_y - 55))
+            self.screen.blit(coord_text, coord_rect)
     
     def draw(self):
         # Draw game world with grid background
@@ -322,6 +364,10 @@ class GameScreen:
         # Weapon
         weapon_text = self.font.render(f"Weapon: {self.player.weapon_name}", True, (200, 200, 255))
         self.screen.blit(weapon_text, (10, 100))
+        
+        # Player coordinates
+        coord_text = self.font.render(f"Position: ({int(self.player.x)}, {int(self.player.y)})", True, (255, 255, 255))
+        self.screen.blit(coord_text, (10, 130))
         
         # Pause menu
         if self.paused:

@@ -43,6 +43,7 @@ class JoinGameScreen:
     def discover_games(self):
         """Discover games on the local network"""
         self.discovered_games = self.network_manager.get_discovered_games()
+        print(f"Discovered games: {self.discovered_games}")
         
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:

@@ -35,6 +35,9 @@ class NetworkManager:
         self.max_reconnect_attempts = 5
         self.reconnect_delay = 2  # seconds
         
+        # Client player ID
+        self.player_id = None
+        
     def start_hosting(self, game_name="Player's Game"):
         """Start hosting a game session"""
         try:
@@ -242,7 +245,14 @@ class NetworkManager:
                 self.is_connected = True
                 self.reconnect_attempts = 0  # Reset on successful connection
                 
-                print(f"Successfully connected to {host}:{port}")
+                # Get player ID from server
+                try:
+                    # In a real implementation, the server would send the player ID
+                    self.player_id = "player_2"  # For now, hardcode it
+                except:
+                    self.player_id = "player_2"
+                
+                print(f"Successfully connected to {host}:{port} as {self.player_id}")
                 
                 # Start listening for data in a separate thread
                 listen_thread = threading.Thread(target=self._listen_for_data)
@@ -300,6 +310,21 @@ class NetworkManager:
                 return None
             data += packet
         return data
+    
+    def send_player_update(self, player_data):
+        """Send player update to server"""
+        try:
+            if self.is_connected and self.client_socket:
+                message = json.dumps({
+                    "type": "player_update",
+                    "player_id": self.player_id,
+                    "data": player_data
+                }).encode('utf-8')
+                # Prefix each message with a 4-byte length (network byte order)
+                message = struct.pack('>I', len(message)) + message
+                self.client_socket.send(message)
+        except Exception as e:
+            print(f"Error sending player update: {e}")
     
     def send_data(self, data):
         """Send data to connected clients or server"""
