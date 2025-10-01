@@ -65,6 +65,17 @@ class NetworkManager:
             self.server_socket.listen(5)
             self.is_host = True
             
+            # Add host player to game state
+            self.game_state["players"]["player_1"] = {
+                "x": 400,
+                "y": 300,
+                "health": 100,
+                "max_health": 100,
+                "name": "Host",
+                "level": 1,
+                "weapon": "Unarmed"
+            }
+            
             # Start accepting connections in a separate thread
             accept_thread = threading.Thread(target=self._accept_connections)
             accept_thread.daemon = True
@@ -94,18 +105,29 @@ class NetworkManager:
     def _accept_connections(self):
         """Accept incoming client connections"""
         print("Waiting for connections...")
+        player_counter = 2  # Start from player_2 since host is player_1
         while self.is_host:
             try:
                 client_sock, address = self.server_socket.accept()
                 print(f"Connection from {address}")
                 # Assign player ID
-                player_id = f"player_{len(self.connected_players) + 1}"
+                player_id = f"player_{player_counter}"
+                player_counter += 1
                 self.connected_players[player_id] = {
                     "socket": client_sock,
                     "address": address,
-                    "x": 400,
+                    "x": 400 + (player_counter * 50),  # Stagger player positions
                     "y": 300
                 }
+                
+                # Send player ID to client
+                player_id_msg = json.dumps({
+                    "type": "player_id",
+                    "player_id": player_id
+                }).encode('utf-8')
+                player_id_msg = struct.pack('>I', len(player_id_msg)) + player_id_msg
+                client_sock.send(player_id_msg)
+                
                 # Handle client in a separate thread
                 client_thread = threading.Thread(target=self._handle_client, args=(client_sock, player_id))
                 client_thread.daemon = True
@@ -119,14 +141,34 @@ class NetworkManager:
         """Handle communication with a connected client"""
         try:
             while self.is_host and player_id in self.connected_players:
-                # In a real implementation, you would receive data from the client
-                # and update the game state accordingly
+                # Receive data from client
+                try:
+                    raw_msglen = self._recvall(client_socket, 4)
+                    if not raw_msglen:
+                        break
+                    msglen = struct.unpack('>I', raw_msglen)[0]
+                    
+                    data = self._recvall(client_socket, msglen)
+                    if not data:
+                        break
+                        
+                    message = json.loads(data.decode('utf-8'))
+                    
+                    if message["type"] == "player_update":
+                        # Update player data in game state
+                        self.game_state["players"][player_id] = message["data"]
+                except Exception as e:
+                    print(f"Error receiving data from {player_id}: {e}")
+                    break
                 time.sleep(0.016)  # ~60 FPS
         except Exception as e:
             print(f"Error handling client {player_id}: {e}")
         finally:
             if player_id in self.connected_players:
                 del self.connected_players[player_id]
+                # Remove player from game state
+                if player_id in self.game_state["players"]:
+                    del self.game_state["players"][player_id]
             client_socket.close()
     
     def _broadcast_game(self, game_name):
@@ -180,40 +222,27 @@ class NetworkManager:
     
     def _sync_game_state(self):
         """Synchronize game state with connected clients using delta compression"""
-        last_state = {}  # Store last sent state for delta compression
-        
         while self.is_host:
             try:
-                # Create delta state (only send changes)
-                delta_state = {}
-                for key, value in self.game_state.items():
-                    if key not in last_state or last_state[key] != value:
-                        delta_state[key] = value
+                # Send game state to all connected clients
+                game_state_msg = json.dumps({
+                    "type": "game_state",
+                    "data": self.game_state,
+                    "timestamp": time.time()
+                }).encode('utf-8')
                 
-                # Only send if there are changes
-                if delta_state or time.time() % 1 < 0.033:  # Force send every second
-                    # Send game state to all connected clients
-                    game_state_msg = json.dumps({
-                        "type": "game_state",
-                        "data": self.game_state,
-                        "timestamp": time.time()
-                    }).encode('utf-8')
-                    
-                    # Prefix each message with a 4-byte length (network byte order)
-                    game_state_msg = struct.pack('>I', len(game_state_msg)) + game_state_msg
-                    
-                    # Send to all connected players
-                    for player_id, player_info in list(self.connected_players.items()):
-                        try:
-                            player_info["socket"].send(game_state_msg)
-                        except Exception as e:
-                            print(f"Error sending to player {player_id}: {e}")
-                            # Remove disconnected player
-                            if player_id in self.connected_players:
-                                del self.connected_players[player_id]
+                # Prefix each message with a 4-byte length (network byte order)
+                game_state_msg = struct.pack('>I', len(game_state_msg)) + game_state_msg
                 
-                # Update last state
-                last_state = self.game_state.copy()
+                # Send to all connected players
+                for player_id, player_info in list(self.connected_players.items()):
+                    try:
+                        player_info["socket"].send(game_state_msg)
+                    except Exception as e:
+                        print(f"Error sending to player {player_id}: {e}")
+                        # Remove disconnected player
+                        if player_id in self.connected_players:
+                            del self.connected_players[player_id]
                 
                 time.sleep(1/30)  # 30 FPS sync
             except Exception as e:
@@ -245,12 +274,16 @@ class NetworkManager:
                 self.is_connected = True
                 self.reconnect_attempts = 0  # Reset on successful connection
                 
-                # Get player ID from server
-                try:
-                    # In a real implementation, the server would send the player ID
-                    self.player_id = "player_2"  # For now, hardcode it
-                except:
-                    self.player_id = "player_2"
+                # Receive player ID from server
+                raw_msglen = self._recvall(self.client_socket, 4)
+                if raw_msglen:
+                    msglen = struct.unpack('>I', raw_msglen)[0]
+                    data = self._recvall(self.client_socket, msglen)
+                    if data:
+                        message = json.loads(data.decode('utf-8'))
+                        if message["type"] == "player_id":
+                            self.player_id = message["player_id"]
+                            print(f"Assigned player ID: {self.player_id}")
                 
                 print(f"Successfully connected to {host}:{port} as {self.player_id}")
                 
@@ -275,13 +308,13 @@ class NetworkManager:
         while self.is_connected:
             try:
                 # Receive the message length (4 bytes)
-                raw_msglen = self._recvall(4)
+                raw_msglen = self._recvall(self.client_socket, 4)
                 if not raw_msglen:
                     break
                 msglen = struct.unpack('>I', raw_msglen)[0]
                 
                 # Receive the message data
-                data = self._recvall(msglen)
+                data = self._recvall(self.client_socket, msglen)
                 if not data:
                     break
                     
@@ -301,11 +334,11 @@ class NetworkManager:
                     # For now, we'll just break the loop
                 break
     
-    def _recvall(self, n):
+    def _recvall(self, sock, n):
         """Helper function to receive n bytes or return None if EOF"""
         data = b''
         while len(data) < n:
-            packet = self.client_socket.recv(n - len(data))
+            packet = sock.recv(n - len(data))
             if not packet:
                 return None
             data += packet
@@ -365,3 +398,7 @@ class NetworkManager:
         if self.broadcast_socket:
             self.broadcast_socket.close()
             self.broadcast_socket = None
+    
+    def get_connected_players(self):
+        """Get list of connected players (for host UI)"""
+        return list(self.connected_players.keys())

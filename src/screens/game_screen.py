@@ -23,7 +23,7 @@ class GameScreen:
         self.grid_color = (200, 200, 200)
         
         # Create player
-        player_id = self.network_manager.player_id if self.network_manager.player_id else "player"
+        player_id = self.network_manager.player_id if self.network_manager.player_id else "player_1"
         self.player = Player(400, 300, player_id)  # Start at center of screen
         
         # Create other players (for multiplayer)
@@ -141,7 +141,7 @@ class GameScreen:
     def update_network_state(self):
         """Update network state with current game state"""
         # Update player positions
-        self.network_manager.game_state["players"][self.player.player_id] = {
+        player_data = {
             "x": self.player.x,
             "y": self.player.y,
             "health": self.player.current_health,
@@ -151,17 +151,10 @@ class GameScreen:
             "weapon": self.player.weapon_name
         }
         
+        self.network_manager.game_state["players"][self.player.player_id] = player_data
+        
         # Send player update to server if we're a client
         if self.network_manager.is_connected and not self.network_manager.is_host:
-            player_data = {
-                "x": self.player.x,
-                "y": self.player.y,
-                "health": self.player.current_health,
-                "max_health": self.player.max_health,
-                "name": "Player",
-                "level": self.player.level,
-                "weapon": self.player.weapon_name
-            }
             self.network_manager.send_player_update(player_data)
         
         # Update monster positions (only host should do this)
@@ -368,6 +361,18 @@ class GameScreen:
         # Player coordinates
         coord_text = self.font.render(f"Position: ({int(self.player.x)}, {int(self.player.y)})", True, (255, 255, 255))
         self.screen.blit(coord_text, (10, 130))
+        
+        # Host UI - show connected players
+        if self.network_manager.is_host:
+            connected_players = self.network_manager.get_connected_players()
+            players_text = self.small_font.render(f"Connected players: {len(connected_players) + 1}", True, (255, 255, 255))
+            self.screen.blit(players_text, (10, self.screen.get_height() - 60))
+            
+            # List player IDs
+            all_players = [self.player.player_id] + connected_players
+            for i, player_id in enumerate(all_players):
+                player_text = self.small_font.render(f"- {player_id}", True, (200, 200, 255))
+                self.screen.blit(player_text, (20, self.screen.get_height() - 30 - (len(all_players) - i - 1) * 20))
         
         # Pause menu
         if self.paused:
