@@ -3,11 +3,13 @@ import random
 from entities.player import Player
 from entities.monster import Monster
 from network.network_manager import NetworkManager
+from screens.settings import SettingsScreen
 
 class GameScreen:
     def __init__(self, screen, save_file=None):
         self.screen = screen
         self.font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 20)
         
         # Network manager
         self.network_manager = NetworkManager()
@@ -21,7 +23,10 @@ class GameScreen:
         self.grid_color = (200, 200, 200)
         
         # Create player
-        self.player = Player(400, 300)  # Start at center of screen
+        self.player = Player(400, 300, "player")  # Start at center of screen
+        
+        # Create other players (for multiplayer)
+        self.other_players = []
         
         # Create monsters
         self.monsters = []
@@ -88,8 +93,9 @@ class GameScreen:
         if action == "resume":
             self.paused = False
         elif action == "settings":
-            # TODO: Implement settings
-            pass
+            # Open settings screen with return to game screen
+            settings_screen = SettingsScreen(self.screen, self)
+            return settings_screen
         elif action == "save_quit":
             # Stop network sharing when quitting to main menu
             self.network_manager.stop_networking()
@@ -103,6 +109,10 @@ class GameScreen:
         if not self.paused:
             # Update player
             self.player.update(dt)
+            
+            # Update other players
+            for other_player in self.other_players:
+                other_player.update(dt)
             
             # Update monsters
             for monster in self.monsters:
@@ -120,6 +130,76 @@ class GameScreen:
             # Update camera to follow player
             self.camera_x = self.player.x - self.screen.get_width() // 2
             self.camera_y = self.player.y - self.screen.get_height() // 2
+            
+            # Update network state
+            self.update_network_state()
+            
+            # Update from network state
+            self.update_from_network_state()
+    
+    def update_network_state(self):
+        """Update network state with current game state"""
+        # Update player positions
+        self.network_manager.game_state["players"]["player"] = {
+            "x": self.player.x,
+            "y": self.player.y,
+            "health": self.player.current_health,
+            "max_health": self.player.max_health,
+            "name": "Player",
+            "level": self.player.level,
+            "weapon": self.player.weapon_name
+        }
+        
+        # Update monster positions
+        for i, monster in enumerate(self.monsters):
+            self.network_manager.game_state["monsters"][f"monster_{i}"] = {
+                "x": monster.x,
+                "y": monster.y,
+                "health": monster.current_health,
+                "max_health": monster.max_health
+            }
+        
+        # Update projectiles
+        all_projectiles = []
+        # Player projectiles
+        for proj in self.player.projectiles:
+            all_projectiles.append({
+                "x": proj.x,
+                "y": proj.y,
+                "vx": proj.vx,
+                "vy": proj.vy,
+                "owner": "player"
+            })
+        
+        # Monster projectiles
+        for monster in self.monsters:
+            for proj in monster.projectiles:
+                all_projectiles.append({
+                    "x": proj.x,
+                    "y": proj.y,
+                    "vx": proj.vx,
+                    "vy": proj.vy,
+                    "owner": "monster"
+                })
+        
+        self.network_manager.game_state["projectiles"] = all_projectiles
+    
+    def update_from_network_state(self):
+        """Update game state from network data"""
+        # Update other players
+        if "players" in self.network_manager.game_state:
+            # Clear existing other players
+            self.other_players = []
+            
+            # Create/update other players
+            for player_id, player_data in self.network_manager.game_state["players"].items():
+                if player_id != "player":  # Skip main player
+                    player = Player(player_data["x"], player_data["y"], player_id)
+                    player.current_health = player_data["health"]
+                    player.max_health = player_data["max_health"]
+                    player.level = player_data["level"]
+                    player.weapon_name = player_data["weapon"]
+                    self.other_players.append(player)
     
     def handle_projectile_collisions(self):
         """Handle collisions between projectiles and entities"""
@@ -174,17 +254,57 @@ class GameScreen:
                             (0, screen_y), 
                             (self.screen.get_width(), screen_y))
     
+    def draw_entity_info(self, entity, camera_x, camera_y):
+        """Draw entity information (health bar, name, level, weapon)"""
+        # Draw health bar
+        health_ratio = entity.current_health / entity.max_health
+        bar_width = 50
+        bar_height = 6
+        screen_x = entity.x - camera_x
+        screen_y = entity.y - camera_y - entity.radius - 15
+        
+        # Background of health bar
+        pygame.draw.rect(self.screen, (100, 0, 0), 
+                        (screen_x - bar_width//2, screen_y, bar_width, bar_height))
+        # Foreground of health bar
+        pygame.draw.rect(self.screen, (0, 200, 0), 
+                        (screen_x - bar_width//2, screen_y, int(bar_width * health_ratio), bar_height))
+        
+        # Draw name and level for players
+        if hasattr(entity, 'player_id'):
+            # Name
+            name_text = self.small_font.render("Player", True, (255, 255, 255))
+            name_rect = name_text.get_rect(center=(screen_x, screen_y - 10))
+            self.screen.blit(name_text, name_rect)
+            
+            # Level
+            level_text = self.small_font.render(f"Lvl: {entity.level}", True, (255, 255, 0))
+            level_rect = level_text.get_rect(center=(screen_x, screen_y - 25))
+            self.screen.blit(level_text, level_rect)
+            
+            # Weapon
+            weapon_text = self.small_font.render(entity.weapon_name, True, (200, 200, 255))
+            weapon_rect = weapon_text.get_rect(center=(screen_x, screen_y - 40))
+            self.screen.blit(weapon_text, weapon_rect)
+    
     def draw(self):
         # Draw game world with grid background
         self.screen.fill((30, 30, 30))  # Dark background
         self.draw_grid()
         
+        # Draw other players
+        for other_player in self.other_players:
+            other_player.draw(self.screen, self.camera_x, self.camera_y)
+            self.draw_entity_info(other_player, self.camera_x, self.camera_y)
+        
         # Draw monsters
         for monster in self.monsters:
             monster.draw(self.screen, self.camera_x, self.camera_y)
+            self.draw_entity_info(monster, self.camera_x, self.camera_y)
         
         # Draw player (should be drawn last so it's on top)
         self.player.draw(self.screen, self.camera_x, self.camera_y)
+        self.draw_entity_info(self.player, self.camera_x, self.camera_y)
         
         # Draw UI
         # Health bar
@@ -198,6 +318,10 @@ class GameScreen:
         
         xp_text = self.font.render(f"XP: {self.player.experience}/{self.player.experience_needed}", True, (255, 255, 255))
         self.screen.blit(xp_text, (10, 70))
+        
+        # Weapon
+        weapon_text = self.font.render(f"Weapon: {self.player.weapon_name}", True, (200, 200, 255))
+        self.screen.blit(weapon_text, (10, 100))
         
         # Pause menu
         if self.paused:
@@ -237,6 +361,10 @@ class GameScreen:
             # Update player
             self.player.update(dt)
             
+            # Update other players
+            for other_player in self.other_players:
+                other_player.update(dt)
+            
             # Update monsters
             for monster in self.monsters:
                 monster.update(dt, self.player.x, self.player.y)
@@ -253,3 +381,9 @@ class GameScreen:
             # Update camera to follow player
             self.camera_x = self.player.x - self.screen.get_width() // 2
             self.camera_y = self.player.y - self.screen.get_height() // 2
+            
+            # Update network state
+            self.update_network_state()
+            
+            # Update from network state
+            self.update_from_network_state()

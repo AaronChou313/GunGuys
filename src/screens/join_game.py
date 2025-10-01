@@ -62,6 +62,9 @@ class JoinGameScreen:
                         return GameScreen(self.screen)
                     else:
                         print("Failed to connect to game")
+                        # Show error message
+                        self.error_message = "Failed to connect to game"
+                        self.error_time = time.time()
                 
                 # Game selection
                 for i, game in enumerate(self.discovered_games):
@@ -123,3 +126,9 @@ class JoinGameScreen:
             join_text = self.font.render("Join", True, (255, 255, 255))
             join_text_rect = join_text.get_rect(center=self.join_button.center)
             self.screen.blit(join_text, join_text_rect)
+        
+        # Draw error message if exists
+        if hasattr(self, 'error_message') and time.time() - self.error_time < 3:
+            error_text = self.font.render(self.error_message, True, (255, 0, 0))
+            error_rect = error_text.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() - 50))
+            self.screen.blit(error_text, error_rect)

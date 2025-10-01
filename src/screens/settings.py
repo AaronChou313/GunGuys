@@ -2,8 +2,9 @@ import pygame
 from network.network_manager import NetworkManager
 
 class SettingsScreen:
-    def __init__(self, screen):
+    def __init__(self, screen, return_screen=None):
         self.screen = screen
+        self.return_screen = return_screen  # Screen to return to
         self.font = pygame.font.Font(None, 36)
         self.small_font = pygame.font.Font(None, 24)
         
@@ -37,8 +38,11 @@ class SettingsScreen:
             if event.button == 1:  # Left mouse button
                 # Back button
                 if self.back_button.collidepoint(event.pos):
-                    from screens.main_menu import MainMenu
-                    return MainMenu(self.screen)
+                    if self.return_screen:
+                        return self.return_screen
+                    else:
+                        from screens.main_menu import MainMenu
+                        return MainMenu(self.screen)
                 
                 # Difficulty buttons
                 for button in self.difficulty_buttons:
@@ -78,8 +82,11 @@ class SettingsScreen:
                         self.game_name += event.unicode
             
             if event.key == pygame.K_ESCAPE:
-                from screens.main_menu import MainMenu
-                return MainMenu(self.screen)
+                if self.return_screen:
+                    return self.return_screen
+                else:
+                    from screens.main_menu import MainMenu
+                    return MainMenu(self.screen)
                 
         return None
     

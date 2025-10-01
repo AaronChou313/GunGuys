@@ -4,8 +4,9 @@ from entities.entity import Entity
 from weapons.projectile import Projectile
 
 class Player(Entity):
-    def __init__(self, x=0, y=0):
+    def __init__(self, x=0, y=0, player_id=None):
         super().__init__(x, y, radius=20, mass=10, max_health=100)
+        self.player_id = player_id if player_id else "player"
         self.level = 1
         self.experience = 0
         self.experience_needed = 100
@@ -33,6 +34,13 @@ class Player(Entity):
         
         # Weapon
         self.weapon = None
+        self.weapon_name = "Unarmed"
+        
+        # Color (different for different players)
+        if self.player_id == "player":
+            self.color = (0, 255, 0)  # Green for main player
+        else:
+            self.color = (0, 255, 255)  # Cyan for other players
     
     def gain_experience(self, amount):
         self.experience += amount
@@ -66,10 +74,13 @@ class Player(Entity):
         self.attack_range = self.base_attack_range
         
         if self.weapon:
+            self.weapon_name = self.weapon.name
             self.damage += self.weapon.damage
             self.attack_speed = self.base_attack_speed * self.weapon.attack_speed
             if hasattr(self.weapon, 'attack_range'):
                 self.attack_range = self.base_attack_range + self.weapon.attack_range
+        else:
+            self.weapon_name = "Unarmed"
     
     def equip_weapon(self, weapon):
         self.weapon = weapon
@@ -114,15 +125,16 @@ class Player(Entity):
         # Handle player movement with acceleration and friction
         keys = pygame.key.get_pressed()
         
-        # Apply acceleration based on input
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.apply_acceleration(-self.acceleration_rate, 0)
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.apply_acceleration(self.acceleration_rate, 0)
-        if keys[pygame.K_UP] or keys[pygame.K_w]:
-            self.apply_acceleration(0, -self.acceleration_rate)
-        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            self.apply_acceleration(0, self.acceleration_rate)
+        # Apply acceleration based on input (only for main player)
+        if self.player_id == "player":
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                self.apply_acceleration(-self.acceleration_rate, 0)
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                self.apply_acceleration(self.acceleration_rate, 0)
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                self.apply_acceleration(0, -self.acceleration_rate)
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                self.apply_acceleration(0, self.acceleration_rate)
         
         # Update entity with physics
         super().update(dt)
@@ -134,7 +146,7 @@ class Player(Entity):
         # Draw player (centered on screen)
         player_screen_x = self.x - camera_x
         player_screen_y = self.y - camera_y
-        pygame.draw.circle(screen, (0, 255, 0), (int(player_screen_x), int(player_screen_y)), self.radius)
+        pygame.draw.circle(screen, self.color, (int(player_screen_x), int(player_screen_y)), self.radius)
         
         # Draw direction indicator
         pygame.draw.circle(screen, (0, 100, 0), (int(player_screen_x), int(player_screen_y)), self.radius//2)
