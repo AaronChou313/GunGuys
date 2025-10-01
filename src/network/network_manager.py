@@ -221,7 +221,7 @@ class NetworkManager:
                 break
     
     def _sync_game_state(self):
-        """Synchronize game state with connected clients using delta compression"""
+        """Synchronize game state with connected clients"""
         while self.is_host:
             try:
                 # Send game state to all connected clients
@@ -330,8 +330,6 @@ class NetworkManager:
                     self.is_connected = False
                     # Try to reconnect
                     time.sleep(self.reconnect_delay)
-                    # In a real implementation, you would need the host and port to reconnect
-                    # For now, we'll just break the loop
                 break
     
     def _recvall(self, sock, n):

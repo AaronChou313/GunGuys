@@ -397,10 +397,6 @@ class GameScreen:
                 text_rect = text.get_rect(center=button["rect"].center)
                 self.screen.blit(text, text_rect)
     
-    def load_game(self, save_file):
-        # TODO: Implement game loading
-        pass
-    
     def update(self, dt=None):
         if dt is not None:
             self._update_with_dt(dt)

@@ -37,10 +37,12 @@ class Player(Entity):
         self.weapon_name = "Unarmed"
         
         # Color (different for different players)
-        if self.player_id == "player":
-            self.color = (0, 255, 0)  # Green for main player
-        else:
+        if self.player_id == "player_1":
+            self.color = (0, 255, 0)  # Green for host
+        elif self.player_id.startswith("player_"):
             self.color = (0, 255, 255)  # Cyan for other players
+        else:
+            self.color = (255, 255, 0)  # Yellow for local player
     
     def gain_experience(self, amount):
         self.experience += amount
@@ -126,7 +128,7 @@ class Player(Entity):
         keys = pygame.key.get_pressed()
         
         # Apply acceleration based on input (only for main player)
-        if self.player_id == "player":
+        if self.player_id.startswith("player_1") or (not self.player_id.startswith("player_")):
             if keys[pygame.K_LEFT] or keys[pygame.K_a]:
                 self.apply_acceleration(-self.acceleration_rate, 0)
             if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
